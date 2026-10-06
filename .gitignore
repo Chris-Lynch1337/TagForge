@@ -1,0 +1,26 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# --- Virtual environment ---
+# Recreate with: python -m venv .venv && pip install -r requirements.txt
+.venv/
+venv/
+env/
+
+# --- Local database ---
+# tagforge.db is built on first run from tagforge/db/sqlite.py.
+# It holds working data, not source, so it stays out of the repo.
+tagforge.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.bak
+
+# --- Editors / OS ---
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
