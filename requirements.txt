@@ -1,0 +1,4 @@
+# TagForge — runtime dependencies
+#   pip install -r requirements.txt
+nicegui>=3.0        # front end (brings httpx, which the UI uses to call the API)
+flask>=3.0          # local REST API
