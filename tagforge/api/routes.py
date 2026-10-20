@@ -1,8 +1,10 @@
 """REST endpoints.
 
-Week 3 scope, matching the status report: reads, plus POST /api/tags as the write
-path. Update and delete are not written yet, and free-text search is not wired —
-both are week 4 work and both are named in the week 3 risk section.
+Week 6 scope: reads with free-text search, plus POST /api/tags as the write path.
+Update and delete are not written yet; they are the next work package.
+
+This surface is what M3 freezes, so search was added before the freeze rather
+than after it.
 
 A route's whole job is HTTP: parse the request, call a service, shape the response.
 No SQL and no business rules live here.
@@ -74,7 +76,9 @@ def get_data_types():
 def get_tags():
     """Filtered tag list plus the browser's tile counts.
 
-    Filters: project_id, controller_id, area_id, data_type, alarmed_only.
+    Filters: project_id, controller_id, area_id, data_type, alarmed_only, search.
+    search is free text and matches tag name, description or PLC address; it
+    combines with the other filters rather than replacing them.
     """
     return jsonify(services.browse(
         db(),
@@ -83,6 +87,7 @@ def get_tags():
         area_id=_int('area_id'),
         data_type=request.args.get('data_type') or None,
         alarmed_only=request.args.get('alarmed_only') in ('1', 'true', 'True'),
+        search=request.args.get('search') or None,
     ))
 
 

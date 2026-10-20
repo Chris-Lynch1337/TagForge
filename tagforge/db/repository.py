@@ -4,7 +4,8 @@ Everything above this layer — services, the API, the UI — works with plain d
 and never builds SQL. That keeps the persistence choice replaceable and makes this
 the single place to test transactions, parameter binding and constraint handling.
 
-Week 3 scope: reads, plus the create path. Update and delete are week 4.
+Week 6 scope: reads, free-text search, and the create path. Update and delete
+are still to be written.
 """
 from __future__ import annotations
 
@@ -95,12 +96,30 @@ TAG_SELECT = """
  LEFT JOIN EquipmentArea a ON a.area_id    = t.area_id"""
 
 
+# LIKE treats these as wildcards, so a user searching for "LT_100%" would match
+# far more than they asked for. They are escaped and the clause declares the
+# escape character.
+LIKE_ESCAPE = str.maketrans({'\\': '\\\\', '%': '\\%', '_': '\\_'})
+
+# The columns free-text search looks in. Name first because that is what an
+# engineer usually half-remembers; address_path included so searching "N7:40"
+# finds the tag at that register.
+SEARCH_COLUMNS = ('t.tag_name', 't.description', 't.address_path')
+
+
+def _search_clause(term: str) -> tuple[str, list[str]]:
+    """One OR-ed LIKE per searchable column, as a clause plus its arguments."""
+    pattern = f'%{term.strip().translate(LIKE_ESCAPE)}%'
+    ors = ' OR '.join(f"{col} LIKE ? ESCAPE '\\'" for col in SEARCH_COLUMNS)
+    return f'({ors})', [pattern] * len(SEARCH_COLUMNS)
+
+
 def list_tags(conn, *, controller_id=None, project_id=None, area_id=None,
-              data_type=None, alarmed_only=False) -> list[dict]:
+              data_type=None, alarmed_only=False, search=None) -> list[dict]:
     """Filtered tag list. Every filter is optional and they combine with AND.
 
-    Free-text search is deliberately absent: it is not wired to the API yet
-    (week 3 status report, M2 slip risk).
+    search is free text: a substring match, case-insensitive for ASCII, against
+    the columns in SEARCH_COLUMNS. It is the fifth M2 acceptance criterion.
     """
     where, args = [], []
     if controller_id is not None:
@@ -113,6 +132,9 @@ def list_tags(conn, *, controller_id=None, project_id=None, area_id=None,
         where.append('d.type_name = ?'); args.append(data_type)
     if alarmed_only:
         where.append('t.alarm_enabled = 1')
+    if search and search.strip():
+        clause, like_args = _search_clause(search)
+        where.append(clause); args.extend(like_args)
 
     sql = TAG_SELECT + (' WHERE ' + ' AND '.join(where) if where else '')
     return _rows(conn.execute(sql + ' ORDER BY t.tag_name', args))
@@ -131,6 +153,28 @@ def tag_names_on_controller(conn, controller_id: int, exclude_tag_id=None) -> li
         sql += ' AND tag_id <> ?'
         args.append(exclude_tag_id)
     return [r['tag_name'] for r in conn.execute(sql, args).fetchall()]
+
+
+def project_id_for_controller(conn, controller_id: int) -> int | None:
+    """The project a controller belongs to, or None if the id is unknown.
+
+    The service layer needs this to scope area lookups to one project. It lives
+    here so that layer never has to write SQL of its own.
+    """
+    row = conn.execute('SELECT project_id FROM Controller WHERE controller_id = ?',
+                       (controller_id,)).fetchone()
+    return row['project_id'] if row else None
+
+
+def data_type_id(conn, type_name: str) -> int | None:
+    """Resolve a type name to its lookup id, or None if the name is unknown.
+
+    Validation rejects unknown names before a write reaches here (TYPE_UNKNOWN),
+    so None means the rules and the lookup table have drifted apart.
+    """
+    row = conn.execute('SELECT data_type_id FROM DataType WHERE type_name = ?',
+                       (type_name,)).fetchone()
+    return row['data_type_id'] if row else None
 
 
 INSERT_COLUMNS = ('controller_id', 'data_type_id', 'area_id', 'tag_name',

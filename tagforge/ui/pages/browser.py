@@ -3,9 +3,9 @@
 Side:  Project Explorer, Filters
 Main:  3 status tiles, Tag Register table
 
-Every number on this page comes from the API. The free-text search box is present
-but disabled: it is not wired to the API yet, which is the M2 slip risk recorded in
-the week 3 status report.
+Every number on this page comes from the API, free-text search included: the box
+sends a search parameter to GET /api/tags and the table and all three tiles
+repaint from the one response. That closes the last M2 acceptance criterion.
 """
 from nicegui import ui
 
@@ -70,17 +70,20 @@ def browser_page() -> None:
                 explorer_body = ui.column().classes('w-full gap-2')
                 with ui.row().classes('gap-2'):
                     ui.button('New project').props('outline no-caps') \
-                        .tooltip('Week 4 — project maintenance screen')
+                        .tooltip('Not written yet — project maintenance screen')
                     ui.button('Open database').props('outline no-caps') \
-                        .tooltip('Week 4 — maintenance screen')
+                        .tooltip('Not written yet — maintenance screen')
 
             filters = Panel('Filters')
             with filters.body:
                 field_label('Search name / description')
-                search = ui.input(placeholder='Not wired to the API yet') \
-                    .props('outlined dense dark').classes('w-full')
-                search.disable()
-                ui.label('Free-text search lands in week 4 (M2).').classes('tf-caption')
+                # debounce keeps one keystroke from becoming one HTTP request.
+                search = ui.input(placeholder='Tag name, description or address',
+                                  on_change=lambda: refresh()) \
+                    .props('outlined dense dark clearable debounce=350') \
+                    .classes('w-full')
+                ui.label('Matches tag name, description or PLC address.') \
+                    .classes('tf-caption')
 
                 field_label('Equipment area')
                 area_select = ui.select({None: 'All areas'}, value=None) \
@@ -123,9 +126,9 @@ def browser_page() -> None:
                     ui.button('New tag', on_click=lambda: ui.navigate.to('/editor')).props('no-caps')
                     ui.button('Edit', on_click=lambda: open_selected()).props('outline no-caps')
                     ui.button('Delete').props('outline no-caps') \
-                        .tooltip('Week 4 — delete endpoint not written')
+                        .tooltip('Not written yet — the delete endpoint is the next work package')
                     ui.button('Export CSV').props('outline no-caps') \
-                        .tooltip('Week 7 — CSV export')
+                        .tooltip('Not written yet — CSV export')
 
         # ---------------- behaviour ----------------
         def open_selected() -> None:
@@ -135,6 +138,7 @@ def browser_page() -> None:
                 ui.notify('Select a row first', type='warning')
 
         def clear_filters() -> None:
+            search.value = ''
             area_select.value = None
             type_select.value = None
             alarm_select.value = False
@@ -183,7 +187,8 @@ def browser_page() -> None:
                                 project_id=state['project_id'],
                                 area_id=area_select.value,
                                 data_type=type_select.value,
-                                alarmed_only='1' if alarm_select.value else None)
+                                alarmed_only='1' if alarm_select.value else None,
+                                search=search.value)
             except api.ApiError as exc:
                 ui.notify(str(exc), type='negative')
                 return
@@ -197,9 +202,11 @@ def browser_page() -> None:
             tags_tile.set(data['tags_in_project'] or None,
                           'In the selected project' if data['tags_in_project']
                           else 'No project selected')
+            searching = bool((search.value or '').strip())
             match_tile.set(len(rows) or None,
                            f"of {data['tags_in_project']} in project" if rows
-                           else 'No rows match')
+                           else ('No match for that search' if searching
+                                 else 'No rows match'))
             flagged = data['flagged']
             flags_tile.set(flagged if flagged else None,
                            'Tags failing a rule today' if flagged else 'Nothing flagged',

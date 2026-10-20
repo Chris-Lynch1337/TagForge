@@ -37,7 +37,8 @@ NiceGUI pages ──HTTP──▶ Flask routes ──▶ services ──▶ repo
  tagforge/ui            tagforge/api     services.py   db/repository.py
 ```
 
-The UI never touches SQLite. Only `db/repository.py` builds SQL. Business rules
+The UI never touches SQLite. Only `db/repository.py` builds SQL — the service
+layer asks it for lookups rather than running queries of its own. Business rules
 live in `services.py`, so the CSV import can call the same functions the API calls.
 
 ### Validation
@@ -75,14 +76,14 @@ database, because the same name legitimately appears on more than one controller
 | --- | --- | --- |
 | Requirements, scope and planning | 8 h | Complete |
 | Domain model and SQLite database | 12 h | Complete |
-| Flask API and service layer | 18 h | Reads and the create path |
-| NiceGUI user interface | 20 h | Browser and editor against the API |
+| Flask API and service layer | 18 h | Reads, search and the create path |
+| NiceGUI user interface | 20 h | Browser with live search; editor read-only |
 | Validation and CSV import/export | 16 h | Rule set done; import not started |
 | Testing, integration, defect correction | 14 h | Not started |
 | Deployment, documentation, walkthrough | 12 h | Not started |
 
-Not yet built: update and delete endpoints, the editor write path, free-text
-search, CSV import/export, and the two report views.
+Not yet built: update and delete endpoints, the editor write path, CSV
+import/export, and the two report views.
 
 ## Checks
 
@@ -91,5 +92,14 @@ python -m tools.smoke_create
 ```
 
 Builds a schema in a throwaway database, creates a tag through the service layer,
-reopens the file and reads it back, then fires each of the eight rules and
-confirms nothing was written by the rejected records.
+reopens the file and reads it back, fires each of the eight rules, confirms
+nothing was written by the rejected records, and exercises free-text search
+against tag name, description and PLC address including wildcard escaping.
+
+```bash
+python -m tools.demo_shared_rules
+```
+
+Sends one deliberately broken record through the service layer and through the
+REST API and asserts both callers get byte-identical messages from the shared
+rule set.

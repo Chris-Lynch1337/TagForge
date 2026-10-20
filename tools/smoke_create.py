@@ -1,7 +1,9 @@
-"""Smoke check for the week 3 write path, against a throwaway database.
+"""Smoke check for the write path, the rule set and free-text search.
 
-Proves the claim in the week 3 status report: a tag goes in through the service
-layer, is committed, and can be read back. Touches nothing in tagforge.db.
+A tag goes in through the service layer, is committed, and can be read back;
+every validation rule is made to fire; and search is exercised against name,
+description and PLC address, including the LIKE wildcard escaping. Runs against
+a scratch database and touches nothing in tagforge.db.
 
     python -m tools.smoke_create
 """
@@ -79,6 +81,58 @@ def main() -> int:
     # ---- nothing was written by the failures ---------------------------
     check('rejected records were not written',
           repo.status(conn)['counts']['Tag'] == 1)
+
+    # ---- free-text search (M2's fifth acceptance criterion) -------------
+    # Three more records so a search can succeed on one and exclude the others.
+    for name, desc, addr in (
+            ('HTR_ZONE2_PV', 'Heater zone 2 process value', 'N7:41'),
+            ('CW_SUPPLY_TMP', 'Cooling water supply temperature', 'N7:60'),
+            ('LT_100_PCT',    'Level transmitter 100 percent span', 'N7:61')):
+        services.create_tag(conn, {**good, 'tag_name': name,
+                                   'description': desc, 'address_path': addr})
+
+    def names(**filters):
+        return sorted(r['tag_name'] for r in repo.list_tags(conn, **filters))
+
+    check('search matches the tag name',
+          names(search='HTR_ZONE') == ['HTR_ZONE1_PV', 'HTR_ZONE2_PV'],
+          ','.join(names(search='HTR_ZONE')))
+    check('search is case-insensitive',
+          names(search='htr_zone') == names(search='HTR_ZONE'))
+    check('search matches the description',
+          names(search='cooling water') == ['CW_SUPPLY_TMP'])
+    check('search matches the PLC address',
+          names(search='N7:60') == ['CW_SUPPLY_TMP'])
+    check('search misses cleanly', names(search='no such tag') == [])
+    check('blank search is not a filter',
+          names(search='   ') == names(), f'{len(names())} rows')
+
+    # A bare % or _ would match everything if the wildcards were not escaped.
+    check('percent is escaped, not a wildcard', names(search='%') == [])
+    check('underscore is escaped, not a wildcard',
+          names(search='LT_100') == ['LT_100_PCT'],
+          ','.join(names(search='LT_100')))
+
+    check('search combines with the other filters',
+          names(search='ZONE', data_type='REAL') == ['HTR_ZONE1_PV', 'HTR_ZONE2_PV'])
+    check('search combines with a non-matching filter',
+          names(search='ZONE', data_type='BOOL') == [])
+
+    # ---- the service layer no longer writes its own SQL -----------------
+    check('repository resolves a controller to its project',
+          repo.project_id_for_controller(conn, controller_id) == project_id)
+    check('unknown controller resolves to None',
+          repo.project_id_for_controller(conn, 9999) is None)
+    check('repository resolves a type name to its id',
+          repo.data_type_id(conn, 'REAL') is not None)
+    check('unknown type name resolves to None',
+          repo.data_type_id(conn, 'FLOAT32') is None)
+
+    # browse() is what the API calls, so check search survives that layer too.
+    browsed = services.browse(conn, search='HTR_ZONE')
+    check('browse() passes search through to the repository',
+          browsed['matching'] == 2 and len(browsed['rows']) == 2,
+          f"matching={browsed['matching']}")
 
     conn.close()
     print(f'\n{"all checks passed" if not failed else str(failed) + " check(s) failed"}'

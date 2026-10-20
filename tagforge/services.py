@@ -3,7 +3,11 @@
 Routes do HTTP. The repository does SQL. This layer decides what a request means:
 it gathers the lookups a rule set needs, runs validation, and only then asks the
 repository to write. Nothing here builds SQL and nothing here knows about HTTP,
-so the CSV import in week 7 can call the same functions the API calls.
+so the CSV import can call the same functions the API calls.
+
+The three queries this module used to run itself are now
+repo.project_id_for_controller() and repo.data_type_id(), which is what the
+design document always claimed: the repository is the only code that builds SQL.
 """
 from __future__ import annotations
 
@@ -31,11 +35,8 @@ class ValidationError(Exception):
 
 def _lookups_for(conn, controller_id, exclude_tag_id=None) -> Lookups:
     """Collect what validate_tag() needs, scoped to the record's own project."""
-    project_id = None
-    if controller_id is not None:
-        row = conn.execute('SELECT project_id FROM Controller WHERE controller_id = ?',
-                           (controller_id,)).fetchone()
-        project_id = row['project_id'] if row else None
+    project_id = (repo.project_id_for_controller(conn, controller_id)
+                  if controller_id is not None else None)
 
     return Lookups(
         data_types={d['type_name']: d['is_numeric'] for d in repo.list_data_types(conn)},
@@ -69,18 +70,15 @@ def check_tag_trace(conn, record: Mapping[str, Any], exclude_tag_id=None) -> dic
 def create_tag(conn, record: Mapping[str, Any]) -> dict:
     """Validate, then write. Returns the stored tag as the browser would show it.
 
-    This is the write path the week 3 status report refers to: a tag goes in
-    through the service layer, is committed, and can be read back.
+    This is the write path the status reports refer to: a tag goes in through
+    the service layer, is committed, and can be read back.
     """
     failures = check_tag(conn, record)
     if blocking(failures):
         raise ValidationError(blocking(failures))
 
-    type_row = conn.execute('SELECT data_type_id FROM DataType WHERE type_name = ?',
-                            (record['data_type'],)).fetchone()
-
     row = dict(record)
-    row['data_type_id'] = type_row['data_type_id']
+    row['data_type_id'] = repo.data_type_id(conn, record['data_type'])
     row['alarm_enabled'] = 1 if record.get('alarm_enabled') else 0
     for key in ('area_id', 'controller_id'):
         if row.get(key) in ('', None):
@@ -93,14 +91,16 @@ def create_tag(conn, record: Mapping[str, Any]) -> dict:
 
 
 def browse(conn, **filters) -> dict:
-    """Everything the Tag Browser needs for one render: rows plus the tile counts."""
+    """Everything the Tag Browser needs for one render: rows plus the tile counts.
+
+    filters are passed straight to the repository, free-text search included, so
+    the three tiles and the table always describe the same query.
+    """
     rows = repo.list_tags(conn, **filters)
 
     project_id = filters.get('project_id')
     if project_id is None and filters.get('controller_id') is not None:
-        row = conn.execute('SELECT project_id FROM Controller WHERE controller_id = ?',
-                           (filters['controller_id'],)).fetchone()
-        project_id = row['project_id'] if row else None
+        project_id = repo.project_id_for_controller(conn, filters['controller_id'])
 
     in_project = len(repo.list_tags(conn, project_id=project_id)) if project_id else len(
         repo.list_tags(conn))

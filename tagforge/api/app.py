@@ -28,7 +28,7 @@ def start_background(db_path=None) -> threading.Thread:
     """Serve the API on a daemon thread so main.py can run the UI in the foreground.
 
     Werkzeug's dev server is fine here: one local user, one process. A production
-    deployment would put this behind a real WSGI server, which is a week 12 concern.
+    deployment would put this behind a real WSGI server, which is a later concern.
     """
     app = create_app(db_path)
 

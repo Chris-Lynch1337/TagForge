@@ -1,7 +1,7 @@
 """The one place tag rules live.
 
 Every entry path calls validate_tag(): the NiceGUI editor, the REST API, the CSV
-import (week 7) and the stored-record audit. The rule code is the message key, so
+import (TBD) and the stored-record audit. The rule code is the message key, so
 the wording a user sees is identical no matter which caller fired it. Nothing here
 touches SQLite — the caller supplies the lookups it already has.
 

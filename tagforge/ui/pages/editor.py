@@ -1,6 +1,6 @@
 """Tag Editor — design doc Figure 3.
 
-Read-only at week 3. The form loads a record from the API and re-runs the shared
+Read-only for now. The form loads a record from the API and re-runs the shared
 rule set on every change, so the field validation table and the rule trace are
 live; Save stays disabled because the editor is not wired to the write path yet.
 The API create endpoint does work — see tools/smoke_create.py — so the gap is
@@ -92,7 +92,7 @@ def editor_page(tag_id: int | None = None) -> None:
                 with ui.row().classes('gap-2 w-full'):
                     save = ui.button('Save tag').props('no-caps')
                     save.disable()
-                    save.tooltip('Week 4 — the editor is not wired to the write path yet')
+                    save.tooltip('Not wired to the write path yet — next work package')
                     ui.button('Re-check', on_click=lambda: revalidate()).props('outline no-caps')
                 ui.label('Read-only this week. The API write path is open and '
                          'covered by tools/smoke_create.py.').classes('tf-caption')
